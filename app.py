@@ -177,23 +177,23 @@ class ibpsGen:
 for each news make:
 
 🔷 HEADLINE: [clear title]
-SUMMARY: [30-50 words only]
-KEY TERMS: [abbreviations with full forms]
-DEFINITIONS: [important concepts]
-CAUSE/REASON: [why happened]
-IMPACT/EFFECT: [effect on banking economy]
-FUTURE OUTLOOK: [what next]
-IBPS RRB RELEVANCE: [exam angle mcq topics]
+🔹 SUMMARY: [30-50 words only]
+🔹 KEY TERMS: [abbreviations with full forms]
+🔹 DEFINITIONS: [important concepts]
+🔹 CAUSE/REASON: [why happened]
+🔹 IMPACT/EFFECT: [effect on banking economy]
+🔹 FUTURE OUTLOOK: [what next]
+🔹 IBPS RRB RELEVANCE: [exam angle mcq topics]
 
 then add:
 
-QUICK REVISION CAPSULES (10 points):
+✅ QUICK REVISION CAPSULES (10 points):
 [bullet points]
 
-STATIC GK ANCHORS:
+✅ STATIC GK ANCHORS:
 [link to syllabus]
 
-EXPECTED MCQs (5 questions):
+✅ EXPECTED MCQs (5 questions):
 Q1. question?
 A) opt B) opt C) opt D) opt
 Answer: X
@@ -220,19 +220,19 @@ focus on rbi sebi banking only exam style simple language"""
         
         return f"""🔷 HEADLINE: IBPS RRB Update - {today}
 
-SUMMARY: banking economic updates for ibps rrb exam prep with regulatory changes market news
+🔹 SUMMARY: banking economic updates for ibps rrb exam prep with regulatory changes market news
 
-KEY TERMS:
+🔹 KEY TERMS:
 • RBI - Reserve Bank of India
 • SEBI - Securities Exchange Board of India
 • NPCI - National Payments Corporation of India
 • UPI - Unified Payments Interface
 
-DEFINITIONS:
+🔹 DEFINITIONS:
 • Repo Rate: rate at which rbi lends to banks
 • Bank Rate: lending rate without collateral
 
-QUICK REVISION CAPSULES:
+✅ QUICK REVISION CAPSULES:
 1. rbi is central bank of india est 1935
 2. current rbi governor shaktikanta das
 3. sebi regulates capital markets
@@ -244,7 +244,7 @@ QUICK REVISION CAPSULES:
 9. regulatory compliance mandatory
 10. current affairs crucial for exams
 
-EXPECTED MCQs:
+✅ EXPECTED MCQs:
 Q1. current rbi governor?
 A) urjit patel B) shaktikanta das C) raghuram rajan D) subbarao
 Answer: B
