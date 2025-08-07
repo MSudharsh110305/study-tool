@@ -1,564 +1,570 @@
 import os
-import logging
-from datetime import datetime, timedelta
 import requests
 import google.generativeai as genai
-from flask import Flask, render_template, jsonify
+from flask import Flask, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
 import sqlite3
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.colors import HexColor
 from reportlab.lib.units import inch
+from reportlab.lib.enums import TA_CENTER
 import io
 from bs4 import BeautifulSoup
 import pytz
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
+import time
+import json
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 app = Flask(__name__)
 
-class ibpsGen:
+class NewsProcessor:
     def __init__(self):
-        self.gApi = os.getenv('GEMINI_API_KEY')
-        self.nApi = os.getenv('NEWS_API_KEY')
-        self.eUser = os.getenv('EMAIL_USER')
-        self.ePass = os.getenv('EMAIL_PASSWORD')
-        self.recpEmail = os.getenv('RECIPIENT_EMAIL')
+        self.gemini_key = os.getenv('GEMINI_API_KEY')
+        self.news_api_key = os.getenv('NEWS_API_KEY')
+        self.email_user = os.getenv('EMAIL_USER')
+        self.email_pass = os.getenv('EMAIL_PASSWORD')
+        self.recipient = os.getenv('RECIPIENT_EMAIL')
         
-        reqVars = {
-            'GEMINI_API_KEY': self.gApi,
-            'EMAIL_USER': self.eUser,
-            'EMAIL_PASSWORD': self.ePass,
-            'RECIPIENT_EMAIL': self.recpEmail
-        }
+        if not all([self.gemini_key, self.email_user, self.email_pass, self.recipient]):
+            raise ValueError("Missing required environment variables")
         
-        missing = [v for v, val in reqVars.items() if not val]
-        if missing:
-            raise ValueError(f"Missing vars: {', '.join(missing)}")
+        genai.configure(api_key=self.gemini_key)
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
         
-        genai.configure(api_key=self.gApi)
-        self.mdl = genai.GenerativeModel('gemini-1.5-flash')
-        
-        self.initDb()
+        self.setup_database()
     
-    def initDb(self):
-        conn = sqlite3.connect('reports.db', check_same_thread=False)
-        cur = conn.cursor()
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS daily_rpts (
+    def setup_database(self):
+        conn = sqlite3.connect('news_reports.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS daily_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                dt TEXT UNIQUE,
-                cont TEXT,
-                mcqs TEXT,
-                pdf_gen BOOLEAN,
-                email_sent BOOLEAN,
+                date TEXT UNIQUE,
+                content TEXT,
+                articles_count INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS app_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                lvl TEXT,
-                msg TEXT
             )
         ''')
         conn.commit()
         conn.close()
     
-    def logDb(self, lvl, msg):
-        try:
-            conn = sqlite3.connect('reports.db', check_same_thread=False)
-            cur = conn.cursor()
-            cur.execute('INSERT INTO app_logs (lvl, msg) VALUES (?, ?)', (lvl, msg))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.error(f"log err: {str(e)}")
-    
-    def getNews(self):
-        newsArts = []
+    def fetch_real_news(self):
+        """Fetch real news from multiple sources"""
+        all_articles = []
         
-        try:
-            if self.nApi:
-                url = "https://newsapi.org/v2/everything"
-                params = {
-                    'q': 'India AND (RBI OR SEBI OR banking OR economic)',
-                    'language': 'en',
-                    'sortBy': 'publishedAt',
-                    'from': (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'),
-                    'apiKey': self.nApi
-                }
-                
-                resp = requests.get(url, params=params, timeout=10)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    arts = data.get('articles', [])
-                    bankArts = [
-                        art for art in arts 
-                        if any(kw.lower() in (art.get('title', '') + art.get('description', '')).lower() 
-                              for kw in ['RBI', 'SEBI', 'bank', 'financial', 'UPI'])
-                    ]
-                    newsArts.extend(bankArts[:4])
+        # 1. News API - Get real banking and economic news
+        if self.news_api_key:
+            news_queries = [
+                'RBI monetary policy India banking',
+                'SEBI regulations Indian stock market',
+                'Indian economy GDP inflation rate',
+                'government schemes India welfare',
+                'international trade India agreements',
+                'Indian sports achievements awards',
+                'banking sector India developments'
+            ]
             
-            rssNews = self.getRss()
-            newsArts.extend(rssNews)
-            
-        except Exception as e:
-            self.logDb('ERROR', f"news err: {str(e)}")
-            logger.error(f"news err: {str(e)}")
+            for query in news_queries:
+                try:
+                    url = "https://newsapi.org/v2/everything"
+                    params = {
+                        'q': query,
+                        'language': 'en',
+                        'sortBy': 'publishedAt',
+                        'from': (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'),
+                        'pageSize': 20,
+                        'apiKey': self.news_api_key
+                    }
+                    
+                    response = requests.get(url, params=params, timeout=10)
+                    if response.status_code == 200:
+                        data = response.json()
+                        articles = data.get('articles', [])
+                        for article in articles:
+                            if article.get('title') and article.get('description'):
+                                all_articles.append({
+                                    'title': article['title'],
+                                    'description': article['description'],
+                                    'source': article.get('source', {}).get('name', 'News API'),
+                                    'url': article.get('url', ''),
+                                    'published': article.get('publishedAt', '')
+                                })
+                    time.sleep(0.5)
+                except Exception as e:
+                    print(f"News API error for query {query}: {e}")
         
-        return newsArts[:8]
-    
-    def getRss(self):
-        rssArts = []
-        feeds = [
-            'https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms',
-            'https://www.business-standard.com/rss/finance-103.rss'
+        # 2. RSS Feed scraping from major Indian news sources
+        rss_feeds = [
+            'https://economictimes.indiatimes.com/rss_feed.xml',
+            'https://www.business-standard.com/rss/finance-103.rss',
+            'https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml',
+            'https://timesofindia.indiatimes.com/rssfeeds/296589292.cms',
+            'https://www.ndtv.com/india-news/rss',
+            'https://economictimes.indiatimes.com/industry/banking/finance/rssfeeds/13358259.cms'
         ]
         
-        for feedUrl in feeds:
+        for feed_url in rss_feeds:
             try:
-                hdr = {'User-Agent': 'Mozilla/5.0'}
-                resp = requests.get(feedUrl, headers=hdr, timeout=10)
-                soup = BeautifulSoup(resp.content, 'xml')
-                items = soup.find_all('item')[:3]
+                headers = {'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)'}
+                response = requests.get(feed_url, headers=headers, timeout=10)
+                soup = BeautifulSoup(response.content, 'xml')
+                items = soup.find_all('item')
                 
-                for itm in items:
-                    ttl = itm.find('title')
-                    desc = itm.find('description')
+                for item in items:
+                    title = item.find('title')
+                    description = item.find('description')
+                    pub_date = item.find('pubDate')
                     
-                    if ttl and desc:
-                        ttlTxt = ttl.text.strip()
-                        descTxt = BeautifulSoup(desc.text, 'html.parser').get_text().strip()[:200]
+                    if title and description:
+                        title_text = title.text.strip()
+                        desc_text = BeautifulSoup(description.text, 'html.parser').get_text().strip()[:300]
                         
-                        if any(kw.lower() in (ttlTxt + descTxt).lower() 
-                              for kw in ['RBI', 'bank', 'financial']):
-                            rssArts.append({
-                                'title': ttlTxt,
-                                'description': descTxt,
-                                'source': {'name': 'RSS'},
-                                'publishedAt': datetime.now().isoformat()
-                            })
+                        all_articles.append({
+                            'title': title_text,
+                            'description': desc_text,
+                            'source': feed_url.split('/')[2],
+                            'url': '',
+                            'published': pub_date.text if pub_date else ''
+                        })
+                        
             except Exception as e:
-                logger.error(f"rss err {feedUrl}: {str(e)}")
+                print(f"RSS feed error for {feed_url}: {e}")
         
-        return rssArts
+        # 3. Web scraping from specific news sites
+        news_sites = [
+            'https://www.thehindu.com/business/',
+            'https://www.livemint.com/economy',
+            'https://www.financialexpress.com/economy/'
+        ]
+        
+        for site_url in news_sites:
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)'}
+                response = requests.get(site_url, headers=headers, timeout=10)
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Extract headlines and descriptions
+                headlines = soup.find_all(['h1', 'h2', 'h3'], class_=lambda x: x and ('headline' in x.lower() or 'title' in x.lower()))
+                
+                for headline in headlines[:5]:
+                    title_text = headline.get_text().strip()
+                    if len(title_text) > 20:
+                        # Try to find associated description
+                        desc_elem = headline.find_next(['p', 'div'], class_=lambda x: x and ('summary' in x.lower() or 'desc' in x.lower()))
+                        desc_text = desc_elem.get_text().strip()[:200] if desc_elem else title_text
+                        
+                        all_articles.append({
+                            'title': title_text,
+                            'description': desc_text,
+                            'source': site_url.split('/')[2],
+                            'url': site_url,
+                            'published': datetime.now().isoformat()
+                        })
+                        
+            except Exception as e:
+                print(f"Web scraping error for {site_url}: {e}")
+        
+        # Remove duplicates and filter for relevance
+        unique_articles = []
+        seen_titles = set()
+        
+        for article in all_articles:
+            title = article['title'].lower()
+            title_key = ' '.join(title.split()[:8])
+            
+            if title_key not in seen_titles and len(article['title']) > 15:
+                # Check relevance for banking exams
+                content = (article['title'] + ' ' + article['description']).lower()
+                relevant_keywords = [
+                    'rbi', 'sebi', 'bank', 'economic', 'government', 'policy', 'inflation',
+                    'gdp', 'market', 'trade', 'scheme', 'award', 'sports', 'international',
+                    'finance', 'monetary', 'rupee', 'investment', 'growth'
+                ]
+                
+                if any(keyword in content for keyword in relevant_keywords):
+                    seen_titles.add(title_key)
+                    unique_articles.append(article)
+        
+        print(f"Fetched {len(unique_articles)} unique relevant articles")
+        return unique_articles
     
-    def genContent(self, newsArts):
-        if not newsArts:
-            return self.getFallback()
+    def categorize_and_process_news(self, articles):
+        """Categorize news and process with Gemini AI"""
+        if not articles:
+            return "No news articles found to process."
         
-        try:
-            newsTxt = "\n\n".join([
-                f"TITLE: {art.get('title', 'N/A')}\nDESC: {art.get('description', 'N/A')[:200]}"
-                for art in newsArts if art.get('title') and art.get('description')
+        # Group articles by category
+        categories = {
+            'banking_finance': [],
+            'economic': [],
+            'government_schemes': [],
+            'international': [],
+            'sports_awards': [],
+            'general': []
+        }
+        
+        for article in articles:
+            content = (article['title'] + ' ' + article['description']).lower()
+            
+            if any(kw in content for kw in ['rbi', 'sebi', 'bank', 'finance', 'loan', 'credit']):
+                categories['banking_finance'].append(article)
+            elif any(kw in content for kw in ['gdp', 'economic', 'inflation', 'growth', 'trade']):
+                categories['economic'].append(article)
+            elif any(kw in content for kw in ['scheme', 'yojana', 'government', 'welfare', 'policy']):
+                categories['government_schemes'].append(article)
+            elif any(kw in content for kw in ['international', 'foreign', 'trade', 'agreement', 'diplomatic']):
+                categories['international'].append(article)
+            elif any(kw in content for kw in ['sport', 'award', 'achievement', 'honor', 'recognition']):
+                categories['sports_awards'].append(article)
+            else:
+                categories['general'].append(article)
+        
+        # Process each category with Gemini AI
+        processed_content = []
+        current_date = datetime.now().strftime('%d %B %Y')
+        
+        for category_name, category_articles in categories.items():
+            if not category_articles:
+                continue
+                
+            # Prepare articles for AI processing
+            articles_text = "\n\n".join([
+                f"TITLE: {article['title']}\nDESCRIPTION: {article['description']}\nSOURCE: {article['source']}"
+                for article in category_articles[:10]  # Process up to 10 articles per category
             ])
             
-            if not newsTxt.strip():
-                return self.getFallback()
-            
-            currDt = datetime.now().strftime('%d %B %Y')
-            
-            prompt = f"""convert banking news to ibps rrb exam format for {currDt}
+            prompt = f"""Process these real news articles for IBPS RRB banking exam preparation on {current_date}.
 
-for each news make:
+Create detailed summaries for each news item in this format:
 
-🔷 HEADLINE: [clear title]
-🔹 SUMMARY: [30-50 words only]
-🔹 KEY TERMS: [abbreviations with full forms]
-🔹 DEFINITIONS: [important concepts]
-🔹 CAUSE/REASON: [why happened]
-🔹 IMPACT/EFFECT: [effect on banking economy]
-🔹 FUTURE OUTLOOK: [what next]
-🔹 IBPS RRB RELEVANCE: [exam angle mcq topics]
+**HEADLINE:** [Clear, concise headline]
+**SUMMARY:** [3-4 sentences explaining the news and its significance]
+**KEY POINTS:**
+• [Important detail 1]
+• [Important detail 2] 
+• [Important detail 3]
+**EXAM RELEVANCE:** [How this relates to IBPS RRB syllabus]
 
-then add:
+News Articles:
+{articles_text}
 
-✅ QUICK REVISION CAPSULES (10 points):
-[bullet points]
+Make it comprehensive and exam-focused. Include exact figures, names, and dates mentioned in the news."""
 
-✅ STATIC GK ANCHORS:
-[link to syllabus]
-
-✅ EXPECTED MCQs (5 questions):
-Q1. question?
-A) opt B) opt C) opt D) opt
-Answer: X
-
-news: {newsTxt[:3000]}
-
-focus on rbi sebi banking only exam style simple language"""
-            
-            resp = self.mdl.generate_content(prompt)
-            
-            if resp and resp.text:
-                return resp.text
-            else:
-                self.logDb('ERROR', "empty gemini resp")
-                return self.getFallback()
-            
-        except Exception as e:
-            self.logDb('ERROR', f"gemini err: {str(e)}")
-            logger.error(f"gemini err: {str(e)}")
-            return self.getFallback()
-    
-    def getFallback(self):
-        today = datetime.now().strftime('%d %B %Y')
+            try:
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=0.1,
+                        max_output_tokens=3000
+                    )
+                )
+                
+                if response and response.text:
+                    category_title = category_name.replace('_', ' ').title()
+                    processed_content.append(f"\n## {category_title}\n\n{response.text.strip()}")
+                    
+            except Exception as e:
+                print(f"Gemini processing error for {category_name}: {e}")
         
-        return f"""🔷 HEADLINE: IBPS RRB Update - {today}
-
-🔹 SUMMARY: banking economic updates for ibps rrb exam prep with regulatory changes market news
-
-🔹 KEY TERMS:
-• RBI - Reserve Bank of India
-• SEBI - Securities Exchange Board of India
-• NPCI - National Payments Corporation of India
-• UPI - Unified Payments Interface
-
-🔹 DEFINITIONS:
-• Repo Rate: rate at which rbi lends to banks
-• Bank Rate: lending rate without collateral
-
-✅ QUICK REVISION CAPSULES:
-1. rbi is central bank of india est 1935
-2. current rbi governor shaktikanta das
-3. sebi regulates capital markets
-4. upi enables instant payments
-5. npci manages retail payments
-6. banking sector key for economy
-7. financial inclusion govt priority
-8. digital banking expanding fast
-9. regulatory compliance mandatory
-10. current affairs crucial for exams
-
-✅ EXPECTED MCQs:
-Q1. current rbi governor?
-A) urjit patel B) shaktikanta das C) raghuram rajan D) subbarao
-Answer: B
-
-Q2. sebi regulates?
-A) banking B) securities market C) insurance D) all
-Answer: B
-
-Q3. upi full form?
-A) united payments B) unified payments interface C) universal payments D) unique payments
-Answer: B
-
-Q4. npci headquarter?
-A) delhi B) mumbai C) bangalore D) chennai
-Answer: B
-
-Q5. rbi established year?
-A) 1934 B) 1935 C) 1947 D) 1950
-Answer: B"""
-    
-    def makePdf(self, cont, dtStr):
-        try:
-            buf = io.BytesIO()
-            doc = SimpleDocTemplate(buf, pagesize=letter, topMargin=0.5*inch)
+        if processed_content:
+            final_content = f"# IBPS RRB Daily News Summary - {current_date}\n"
+            final_content += f"**Total Articles Processed:** {len(articles)}\n\n"
+            final_content += "\n".join(processed_content)
             
+            # Add MCQs based on the news
+            mcq_prompt = f"""Based on the above news summary, create 5 multiple choice questions for IBPS RRB exam:
+
+Create questions in this format:
+Q1. [Question based on the news]
+A) Option 1  B) Option 2  C) Option 3  D) Option 4
+Answer: [Correct option] - [Brief explanation]
+
+Focus on facts, figures, and important details from today's news."""
+
+            try:
+                mcq_response = self.model.generate_content(mcq_prompt)
+                if mcq_response and mcq_response.text:
+                    final_content += f"\n\n## Practice MCQs\n\n{mcq_response.text.strip()}"
+            except Exception as e:
+                print(f"MCQ generation error: {e}")
+            
+            return final_content
+        else:
+            return "Unable to process news articles with AI."
+    
+    def create_pdf(self, content, date_str):
+        """Create formatted PDF"""
+        try:
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter)
             styles = getSampleStyleSheet()
             
-            ttlStyle = ParagraphStyle(
-                'ttl',
-                parent=styles['Title'],
-                fontSize=16,
-                textColor=HexColor('#1f4e79'),
-                spaceAfter=25,
-                alignment=1
+            # Custom styles
+            title_style = ParagraphStyle(
+                'Title', parent=styles['Title'], fontSize=16,
+                textColor=HexColor('#2d3748'), spaceAfter=20, alignment=TA_CENTER
             )
             
-            hdStyle = ParagraphStyle(
-                'hd',
-                parent=styles['Heading2'],
-                fontSize=11,
-                textColor=HexColor('#2e5984'),
-                spaceBefore=8,
-                spaceAfter=6
+            heading_style = ParagraphStyle(
+                'Heading', parent=styles['Heading2'], fontSize=12,
+                textColor=HexColor('#4a5568'), spaceBefore=10, spaceAfter=8
+            )
+            
+            content_style = ParagraphStyle(
+                'Content', parent=styles['Normal'], fontSize=10,
+                spaceBefore=3, spaceAfter=3, leading=12
             )
             
             story = []
-            story.append(Paragraph(f"IBPS RRB Report - {dtStr}", ttlStyle))
-            story.append(Spacer(1, 15))
+            story.append(Paragraph(f"IBPS RRB Daily News Summary - {date_str}", title_style))
+            story.append(Spacer(1, 20))
             
-            lines = cont.split('\n')
-            for ln in lines:
-                ln = ln.strip()
-                if not ln:
-                    continue
-                    
-                if ln.startswith('🔷') or ln.startswith('🔹') or ln.startswith('✅'):
-                    story.append(Paragraph(ln, hdStyle))
+            # Process content line by line
+            lines = content.split('\n')
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    story.append(Spacer(1, 4))
+                elif line.startswith('#'):
+                    story.append(Paragraph(line.replace('#', '').strip(), heading_style))
+                elif line.startswith('**') and line.endswith('**'):
+                    story.append(Paragraph(f"<b>{line[2:-2]}</b>", content_style))
                 else:
-                    story.append(Paragraph(ln, styles['Normal']))
-                story.append(Spacer(1, 3))
+                    story.append(Paragraph(line, content_style))
+                story.append(Spacer(1, 2))
             
             doc.build(story)
-            pdfData = buf.getvalue()
-            buf.close()
-            return pdfData
+            return buffer.getvalue()
             
         except Exception as e:
-            self.logDb('ERROR', f"pdf err: {str(e)}")
+            print(f"PDF creation error: {e}")
             return None
     
-    def sendMail(self, pdfData, dtStr):
+    def send_email(self, content, pdf_data, date_str):
+        """Send email with news summary"""
         try:
             msg = MIMEMultipart()
-            msg['From'] = self.eUser
-            msg['To'] = self.recpEmail
-            msg['Subject'] = f"IBPS RRB Report - {dtStr}"
+            msg['From'] = self.email_user
+            msg['To'] = self.recipient
+            msg['Subject'] = f"IBPS RRB Daily News Summary - {date_str}"
             
-            body = f"""your daily ibps rrb study material for {dtStr}
+            email_body = f"""Dear IBPS RRB Aspirant,
 
-includes:
-- banking economic news
-- structured exam content
-- revision capsules
-- practice mcqs
-- static gk links
+Your comprehensive daily news summary for {date_str} is ready.
 
-good luck!"""
+This report includes real-time news analysis covering:
+• Banking and Financial sector developments
+• Economic indicators and policy changes  
+• Government schemes and initiatives
+• International affairs and trade news
+• Sports achievements and awards
+• Important current affairs for your exam
+
+All content is processed from live news sources and analyzed specifically for IBPS RRB exam relevance.
+
+Best wishes for your preparation!
+
+IBPS RRB Study Assistant"""
             
-            msg.attach(MIMEText(body, 'plain'))
+            msg.attach(MIMEText(email_body, 'plain'))
             
-            if pdfData:
+            if pdf_data:
+                from email.mime.base import MIMEBase
+                from email import encoders
+                
                 part = MIMEBase('application', 'octet-stream')
-                part.set_payload(pdfData)
+                part.set_payload(pdf_data)
                 encoders.encode_base64(part)
                 part.add_header(
                     'Content-Disposition',
-                    f'attachment; filename=report_{dtStr.replace(" ", "_")}.pdf'
+                    f'attachment; filename=IBPS_RRB_News_{date_str.replace(" ", "_")}.pdf'
                 )
                 msg.attach(part)
             
-            srv = smtplib.SMTP('smtp.gmail.com', 587)
-            srv.starttls()
-            srv.login(self.eUser, self.ePass)
-            srv.sendmail(self.eUser, self.recpEmail, msg.as_string())
-            srv.quit()
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(self.email_user, self.email_pass)
+            server.sendmail(self.email_user, self.recipient, msg.as_string())
+            server.quit()
+            
             return True
             
         except Exception as e:
-            self.logDb('ERROR', f"email err: {str(e)}")
+            print(f"Email sending error: {e}")
             return False
     
-    def genRpt(self):
-        istTz = pytz.timezone('Asia/Kolkata')
-        dtStr = datetime.now(istTz).strftime('%d %B %Y')
+    def generate_daily_report(self):
+        """Main function to generate daily report"""
+        ist_tz = pytz.timezone('Asia/Kolkata')
+        date_str = datetime.now(ist_tz).strftime('%d %B %Y')
         
         try:
-            self.logDb('INFO', f"start gen {dtStr}")
+            print(f"Starting news processing for {date_str}")
             
-            conn = sqlite3.connect('reports.db', check_same_thread=False)
-            cur = conn.cursor()
-            cur.execute('SELECT id FROM daily_rpts WHERE dt = ?', (dtStr,))
-            existing = cur.fetchone()
-            
-            if existing:
-                self.logDb('INFO', f"already gen {dtStr}")
+            # Check if already generated today
+            conn = sqlite3.connect('news_reports.db', check_same_thread=False)
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM daily_reports WHERE date = ?', (date_str,))
+            if cursor.fetchone():
+                print(f"Report already generated for {date_str}")
                 conn.close()
-                return {"status": "exists", "date": dtStr}
+                return {"status": "already_exists", "date": date_str}
+            conn.close()
             
-            newsArts = self.getNews()
-            logger.info(f"got {len(newsArts)} articles")
+            # Fetch real news
+            articles = self.fetch_real_news()
+            if not articles:
+                print("No articles found")
+                return {"status": "error", "message": "No news articles found"}
             
-            structCont = self.genContent(newsArts)
+            # Process with AI
+            processed_content = self.categorize_and_process_news(articles)
             
-            pdfData = self.makePdf(structCont, dtStr)
-            pdfGen = pdfData is not None
+            # Create PDF
+            pdf_data = self.create_pdf(processed_content, date_str)
             
-            emailSent = False
-            if pdfData:
-                emailSent = self.sendMail(pdfData, dtStr)
+            # Send email
+            email_sent = self.send_email(processed_content, pdf_data, date_str)
             
-            cur.execute('''
-                INSERT INTO daily_rpts (dt, cont, pdf_gen, email_sent)
-                VALUES (?, ?, ?, ?)
-            ''', (dtStr, structCont, pdfGen, emailSent))
-            
+            # Save to database
+            conn = sqlite3.connect('news_reports.db', check_same_thread=False)
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO daily_reports (date, content, articles_count)
+                VALUES (?, ?, ?)
+            ''', (date_str, processed_content, len(articles)))
             conn.commit()
             conn.close()
             
-            statusMsg = f"gen {dtStr} pdf:{'y' if pdfGen else 'n'} email:{'y' if emailSent else 'n'}"
-            self.logDb('INFO', statusMsg)
+            print(f"Report generated successfully - Articles: {len(articles)}, Email: {'✓' if email_sent else '✗'}")
             
             return {
                 "status": "success",
-                "date": dtStr,
-                "pdf_generated": pdfGen,
-                "email_sent": emailSent
+                "date": date_str,
+                "articles_processed": len(articles),
+                "email_sent": email_sent
             }
             
         except Exception as e:
-            errMsg = f"gen err: {str(e)}"
-            self.logDb('ERROR', errMsg)
+            print(f"Report generation error: {e}")
             return {"status": "error", "message": str(e)}
 
+# Initialize processor
 try:
-    rptGen = ibpsGen()
-    logger.info("gen init success")
+    processor = NewsProcessor()
+    print("News processor initialized successfully")
 except Exception as e:
-    logger.error(f"init fail: {str(e)}")
-    rptGen = None
+    print(f"Initialization error: {e}")
+    processor = None
 
 @app.route('/')
-def dash():
-    if not rptGen:
-        return "app not configured check env vars"
+def dashboard():
+    if not processor:
+        return "System not configured properly. Check environment variables."
     
-    try:
-        conn = sqlite3.connect('reports.db', check_same_thread=False)
-        cur = conn.cursor()
-        
-        cur.execute('SELECT * FROM daily_rpts ORDER BY created_at DESC LIMIT 7')
-        recentRpts = cur.fetchall()
-        
-        cur.execute('SELECT * FROM app_logs ORDER BY ts DESC LIMIT 10')
-        recentLogs = cur.fetchall()
-        
-        conn.close()
-        
-        istTime = datetime.now(pytz.timezone('Asia/Kolkata'))
-        
-        html = f"""<!DOCTYPE html>
+    ist_time = datetime.now(pytz.timezone('Asia/Kolkata'))
+    
+    html = f"""<!DOCTYPE html>
 <html>
 <head>
-<title>IBPS RRB Generator</title>
+<title>IBPS RRB News Processor</title>
 <style>
-body{{font-family:Arial;margin:20px;background:#f5f5f5}}
-.container{{max-width:1200px;margin:0 auto}}
-.header{{background:linear-gradient(135deg,#1f4e79,#2e5984);color:white;padding:20px;border-radius:10px;text-align:center}}
-.card{{background:white;margin:20px 0;padding:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}}
-.btn{{background:#007bff;color:white;padding:10px 20px;border:none;border-radius:5px;text-decoration:none;display:inline-block;margin:5px}}
-.btn:hover{{background:#0056b3}}
-table{{width:100%;border-collapse:collapse}}
-th,td{{padding:10px;text-align:left;border-bottom:1px solid #ddd}}
-th{{background:#f8f9fa}}
-.status-good{{color:#28a745}}
-.status-bad{{color:#dc3545}}
+body{{font-family:Arial,sans-serif;margin:40px;background:#f8f9fa}}
+.container{{max-width:800px;margin:0 auto}}
+.header{{background:#2d3748;color:white;padding:30px;border-radius:8px;text-align:center}}
+.card{{background:white;margin:20px 0;padding:25px;border-radius:8px;border:1px solid #e2e8f0}}
+.btn{{background:#3182ce;color:white;padding:12px 24px;border:none;border-radius:5px;text-decoration:none;display:inline-block;margin:8px}}
+.status{{background:#e6fffa;padding:15px;border-radius:5px;border-left:4px solid #38b2ac}}
 </style>
 </head>
 <body>
 <div class="container">
 <div class="header">
-<h1>IBPS RRB Generator</h1>
-<p>gemini powered daily reports</p>
-<p>status: running</p>
+<h1>IBPS RRB Real News Processor</h1>
+<p>Live News Fetching & AI Processing System</p>
 </div>
 
 <div class="card">
-<h2>system status</h2>
-<p>gemini api: {'ok' if os.getenv('GEMINI_API_KEY') else 'missing'}</p>
-<p>email: {'ok' if os.getenv('EMAIL_USER') else 'missing'}</p>
-<p>next report: tomorrow 7:30 am ist</p>
-<p>current: {istTime.strftime('%d %B %Y %I:%M %p')}</p>
-<a href="/gen-now" class="btn">generate now</a>
-<a href="/test-email" class="btn">test email</a>
+<h2>System Status</h2>
+<div class="status">
+<strong>Status: Active</strong><br>
+Real-time news fetching from multiple sources<br>
+AI processing with Gemini<br>
+Daily reports at 7:30 AM IST
+</div>
+<p><strong>Current Time:</strong> {ist_time.strftime('%d %B %Y, %I:%M %p IST')}</p>
 </div>
 
 <div class="card">
-<h2>recent reports</h2>
-<table>
-<tr><th>date</th><th>pdf</th><th>email</th><th>created</th></tr>"""
-        
-        if recentRpts:
-            for rpt in recentRpts:
-                html += f"""<tr>
-<td>{rpt[1]}</td>
-<td class="{'status-good' if rpt[3] else 'status-bad'}">{'✓' if rpt[3] else '✗'}</td>
-<td class="{'status-good' if rpt[4] else 'status-bad'}">{'✓' if rpt[4] else '✗'}</td>
-<td>{rpt[5]}</td>
-</tr>"""
-        else:
-            html += "<tr><td colspan='4'>no reports yet</td></tr>"
-        
-        html += """</table>
+<h2>Actions</h2>
+<a href="/generate" class="btn">Generate Today's Report</a>
+<a href="/test" class="btn">Test System</a>
 </div>
 
 <div class="card">
-<h2>logs</h2>
-<table>
-<tr><th>time</th><th>level</th><th>message</th></tr>"""
-        
-        if recentLogs:
-            for log in recentLogs:
-                html += f"<tr><td>{log[1]}</td><td>{log[2]}</td><td>{log[3]}</td></tr>"
-        
-        html += """</table>
+<h2>Data Sources</h2>
+<ul>
+<li>News API - Real-time banking and economic news</li>
+<li>RSS Feeds - Economic Times, Business Standard, Hindu</li>
+<li>Web Scraping - Live news from major sites</li>
+<li>AI Processing - Gemini 1.5 Flash for analysis</li>
+<li>Email Delivery - Automated daily summaries</li>
+</ul>
 </div>
 </div>
 </body>
 </html>"""
-        
-        return html
-        
-    except Exception as e:
-        return f"dash err: {str(e)}"
-
-@app.route('/gen-now')
-def genNow():
-    if not rptGen:
-        return jsonify({"status": "error", "msg": "not init"})
     
-    try:
-        result = rptGen.genRpt()
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"status": "error", "msg": str(e)})
+    return html
 
-@app.route('/test-email')
-def testEmail():
-    if not rptGen:
-        return jsonify({"status": "error", "msg": "not init"})
+@app.route('/generate')
+def generate_report():
+    if not processor:
+        return jsonify({"status": "error", "message": "System not initialized"})
     
+    result = processor.generate_daily_report()
+    return jsonify(result)
+
+@app.route('/test')
+def test_system():
+    if not processor:
+        return jsonify({"status": "error", "message": "System not initialized"})
+    
+    # Quick test with few articles
     try:
-        testCont = "test email ibps rrb gen working"
-        pdfData = rptGen.makePdf(testCont, "TEST")
-        success = rptGen.sendMail(pdfData, "TEST")
-        
-        if success:
-            return jsonify({"status": "success", "msg": "test email sent"})
+        articles = processor.fetch_real_news()[:5]
+        if articles:
+            return jsonify({
+                "status": "success", 
+                "message": f"Test successful - Found {len(articles)} articles",
+                "sample_titles": [art['title'][:50] + "..." for art in articles[:3]]
+            })
         else:
-            return jsonify({"status": "error", "msg": "email failed"})
+            return jsonify({"status": "error", "message": "No articles found in test"})
     except Exception as e:
-        return jsonify({"status": "error", "msg": str(e)})
+        return jsonify({"status": "error", "message": str(e)})
 
-@app.route('/health')
-def health():
-    istTime = datetime.now(pytz.timezone('Asia/Kolkata'))
-    return jsonify({
-        "status": "ok",
-        "time": istTime.isoformat(),
-        "gen_ready": rptGen is not None
-    })
+# Scheduler
+scheduler = BackgroundScheduler()
 
-sched = BackgroundScheduler()
-
-if rptGen:
-    istTz = pytz.timezone('Asia/Kolkata')
-    sched.add_job(
-        func=rptGen.genRpt,
-        trigger=CronTrigger(hour=7, minute=30, timezone=istTz),
-        id='daily_job',
-        name='daily ibps report',
-        replace_existing=True
+if processor:
+    ist_tz = pytz.timezone('Asia/Kolkata')
+    scheduler.add_job(
+        func=processor.generate_daily_report,
+        trigger=CronTrigger(hour=7, minute=30, timezone=ist_tz),
+        id='daily_news_job'
     )
-    sched.start()
-    logger.info("sched started")
+    scheduler.start()
+    print("Scheduler started - Daily reports at 7:30 AM IST")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
