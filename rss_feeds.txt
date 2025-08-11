@@ -1,0 +1,6 @@
+https://economictimes.indiatimes.com/rss_feed.xml
+https://www.business-standard.com/rss/finance-103.rss
+https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml
+https://timesofindia.indiatimes.com/rssfeeds/296589292.cms
+https://www.ndtv.com/india-news/rss
+https://economictimes.indiatimes.com/industry/banking/finance/rssfeeds/13358259.cms

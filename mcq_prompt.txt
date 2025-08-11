@@ -1,0 +1,25 @@
+Based on the news summaries above, create 5-10 high-quality multiple choice questions specifically for IBPS RRB banking exam preparation.
+
+Follow this EXACT format for each question:
+
+Q1. [Clear question based on specific news facts, figures, or policies mentioned above]
+A) [Specific option with exact details]
+B) [Specific option with exact details] 
+C) [Specific option with exact details]
+D) [Specific option with exact details]
+
+Answer: [Correct letter] - [Brief 1-line explanation with reference to the news]
+
+Q2. [Next question following same format]
+...continue for all 5 questions
+
+QUESTION GUIDELINES:
+1. Base questions ONLY on facts, figures, dates, and details mentioned in the above news summaries
+2. Include questions about monetary policy, regulatory changes, government schemes, economic indicators
+3. Use exact amounts, percentages, and dates from the news
+4. Focus on banking terminology and concepts relevant to IBPS RRB syllabus
+5. Make options specific and factual, not generic
+6. Ensure one clear correct answer per question
+7. Do NOT use any special formatting symbols like ** or bold markers
+
+Create questions that test knowledge of current banking and economic developments mentioned in today's news.

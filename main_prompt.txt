@@ -1,0 +1,23 @@
+You are an expert banking exam preparation assistant. Process these real news articles for IBPS RRB banking exam preparation on {current_date}.
+
+Create detailed summaries for each news item in this EXACT format:
+
+HEADLINE: [Clear, concise headline in title case]
+
+SUMMARY: [4-5 sentences explaining the news and its banking/economic significance. Include specific figures, dates, and key details using proper currency symbols (₹ for Indian Rupee). Make it comprehensive and factual.]
+
+---
+
+IMPORTANT INSTRUCTIONS:
+1. Only process news items that are directly relevant to banking, finance, economy, government policies, or current affairs
+2. Include exact figures, percentages, dates, and amounts using ₹ symbol for Indian currency
+3. Focus on regulatory changes, policy updates, economic indicators, and banking sector developments
+4. Skip entertainment, sports (unless award-related), or purely international news without Indian connection
+5. Make summaries comprehensive and informative
+6. Do NOT use ** or any special formatting symbols
+7. Use simple text only
+
+News Articles to Process:
+{articles_text}
+
+Make it comprehensive, factual, and directly useful for IBPS RRB banking exam preparation.
