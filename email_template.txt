@@ -1,17 +1,6 @@
-Dear Sudahrsh,
+Dear Sudharsh,
 
 Your comprehensive daily news summary for {date_str} is ready.
-
-This report includes real-time news analysis covering:
-
-• Banking and Financial sector developments
-• Economic indicators and policy changes
-• Government schemes and initiatives
-• International affairs and trade news
-• Sports achievements and awards
-• Important current affairs for your exam
-
-All content is processed from live news sources and analyzed specifically for IBPS RRB exam relevance.
 
 Best wishes for your preparation!
 

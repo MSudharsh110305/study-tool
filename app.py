@@ -28,11 +28,9 @@ load_dotenv()
 app = Flask(__name__)
 
 class ConfigLoader:
-    """Utility class to load configuration from text files"""
     
     @staticmethod
     def load_lines(filename):
-        """Load lines from a text file, ignoring empty lines and comments"""
         try:
             with open(filename, 'r', encoding='utf-8') as file:
                 lines = [line.strip() for line in file.readlines()]
@@ -46,7 +44,6 @@ class ConfigLoader:
     
     @staticmethod
     def load_text(filename):
-        """Load entire text content from a file"""
         try:
             with open(filename, 'r', encoding='utf-8') as file:
                 return file.read().strip()
@@ -76,7 +73,6 @@ class NewsProcessor:
         self.setup_database()
 
     def load_config(self):
-        """Load all configuration from external files"""
         self.news_queries = ConfigLoader.load_lines('news_queries.txt')
         self.rss_feeds = ConfigLoader.load_lines('rss_feeds.txt')
         self.news_sites = ConfigLoader.load_lines('news_sites.txt')
@@ -85,6 +81,76 @@ class NewsProcessor:
         self.mcq_prompt_template = ConfigLoader.load_text('mcq_prompt.txt')
         self.email_template = ConfigLoader.load_text('email_template.txt')
         
+        if not self.main_prompt_template:
+            self.main_prompt_template = """You are an expert banking exam preparation assistant. Process these real news articles for IBPS RRB banking exam preparation on {current_date}.
+
+Create detailed summaries for each news item in this EXACT format:
+
+HEADLINE: [Clear, concise headline in title case]
+
+SUMMARY: [4-5 sentences explaining the news. Include specific figures, dates, and key details using Rs. for Indian Rupee currency. Use the technical terms as they appear in the news - don't simplify them here.]
+
+GLOSSARY: [List all banking, financial, and technical terms from this article with simple explanations]
+• [Term 1]: [Simple, beginner-friendly explanation in one line]
+• [Term 2]: [Simple, beginner-friendly explanation in one line]
+• [Term 3]: [Simple, beginner-friendly explanation in one line]
+
+IMPORTANT INSTRUCTIONS:
+1. Only process news items that are directly relevant to banking, finance, economy, government policies, or current affairs
+2. Include exact figures, percentages, dates, and amounts using Rs. for Indian currency
+3. In SUMMARY: Use the original technical terms as they appear in news
+4. In GLOSSARY: Explain ALL technical terms in simple language for complete beginners
+5. Include terms like: NPA, NBFC, ARC, RBI, SEBI, co-lending, capex, etc.
+6. Do NOT use ** or any special formatting symbols
+7. Use simple text only
+8. Do NOT use --- dividers, just leave blank lines between articles
+
+EXAMPLES OF GLOSSARY ENTRIES:
+• NPA: Bad loans that borrowers cannot repay back to the bank
+• NBFC: Finance companies that give loans like banks but have different rules
+• ARC: Special companies that buy bad loans from banks to clean up bank balance sheets
+• Co-lending: When banks and finance companies work together to give loans
+• Capex: Money spent by companies on buying equipment, buildings, and technology
+• Net Interest Margin: Profit banks make from the difference between loan and deposit interest rates
+
+News Articles to Process:
+{articles_text}
+
+Make it comprehensive, factual, and directly useful for IBPS RRB banking exam preparation with automatic glossary generation."""
+
+        if not self.mcq_prompt_template:
+            self.mcq_prompt_template = """Based on the news summaries above, create 5 high-quality multiple choice questions specifically for IBPS RRB banking exam preparation.
+
+Follow this EXACT format for each question:
+
+Q1. [Clear question based on specific news facts, figures, or policies mentioned above - use SIMPLE LANGUAGE and explain any banking terms]
+A) [Specific option with exact details - in simple language]
+B) [Specific option with exact details - in simple language] 
+C) [Specific option with exact details - in simple language]
+D) [Specific option with exact details - in simple language]
+
+Answer: [Correct letter] - [Brief 1-line explanation with reference to the news - in simple terms]
+
+Q2. [Next question following same format]
+...continue for all 5 questions
+
+QUESTION GUIDELINES:
+1. Base questions ONLY on facts, figures, dates, and details mentioned in the above news summaries
+2. Include questions about monetary policy, regulatory changes, government schemes, economic indicators
+3. Use exact amounts, percentages, and dates from the news
+4. EXPLAIN banking terminology in simple language within questions
+5. Make options specific and factual, not generic
+6. Ensure one clear correct answer per question
+7. Do NOT use any special formatting symbols like ** or bold markers
+8. Use beginner-friendly language throughout
+9. Use Rs. for all currency amounts
+
+EXAMPLES:
+- Instead of "What is the NPA value?": "How much money in bad loans (loans people can't repay) is PNB planning to sell?"
+- Instead of "NBFC growth": "How much are finance companies (non-bank lenders) expected to grow?"
+
+Create questions that test knowledge of current banking and economic developments mentioned in today's news using simple, beginner-friendly language."""
+
         if not self.news_queries:
             self.news_queries = [
                 'RBI monetary policy India banking',
@@ -137,7 +203,6 @@ class NewsProcessor:
         conn.close()
 
     def calculate_relevance_score(self, article):
-        """Calculate relevance score for IBPS RRB banking exam"""
         content = (article['title'] + ' ' + article['description']).lower()
         
         high_relevance_keywords = [
@@ -174,7 +239,6 @@ class NewsProcessor:
         return score
 
     def improved_categorization(self, article):
-        """Improved categorization logic with better accuracy"""
         content = (article['title'] + ' ' + article['description']).lower()
         
         banking_keywords = [
@@ -218,7 +282,6 @@ class NewsProcessor:
             return 'general'
 
     def fetch_real_news(self):
-        """Fetch real news from multiple sources with improved filtering"""
         all_articles = []
 
         if self.news_api_key:
@@ -316,7 +379,6 @@ class NewsProcessor:
         return filtered_articles
 
     def categorize_and_process_news(self, articles):
-        """Improved categorization and processing with clean format"""
         if not articles:
             return "No news articles found to process."
 
@@ -357,7 +419,7 @@ class NewsProcessor:
                     prompt,
                     generation_config=genai.types.GenerationConfig(
                         temperature=0.1,
-                        max_output_tokens=4000,
+                        max_output_tokens=5000,  
                         top_p=0.95,
                         top_k=40
                     )
@@ -371,8 +433,8 @@ class NewsProcessor:
                 print(f"Gemini processing error for {category_name}: {e}")
 
         if processed_content:
-            final_content = f"IBPS RRB Daily News Summary - {current_date}\n"
-            final_content += f"Total High-Quality Articles Processed: {len(articles)}\n\n"
+            final_content = f"IBPS RRB News - {current_date}\n"
+            final_content += f"Articles Processed: {len(articles)}\n\n"
             final_content += "\n".join(processed_content)
 
             try:
@@ -385,7 +447,7 @@ class NewsProcessor:
                     )
                 )
                 if mcq_response and mcq_response.text:
-                    final_content += f"\n\nPractice MCQs Based on Today's News\n\n{mcq_response.text.strip()}"
+                    final_content += f"\n\nPractice MCQs\n\n{mcq_response.text.strip()}"
             except Exception as e:
                 print(f"MCQ generation error: {e}")
 
@@ -396,17 +458,27 @@ class NewsProcessor:
             return "Unable to process news articles with AI."
 
     def fix_currency_symbols(self, content):
-        """Fix currency symbol encoding issues"""
-        content = re.sub(r'\bI(\d+(?:,\d+)*(?:\.\d+)?)\s*(crore|lakh|billion|million|thousand)', r'₹\1 \2', content)
-        content = re.sub(r'Rs\.?\s*(\d+)', r'₹\1', content)
-        content = re.sub(r'INR\s*(\d+)', r'₹\1', content)
-        content = content.replace('I crore', '₹ crore')
-        content = content.replace('I lakh', '₹ lakh')
+        content = re.sub(r'₹(\d+(?:,\d+)*(?:\.\d+)?)\s*(crore|lakh|billion|million|thousand)', r'Rs.\1 \2', content)
+        content = re.sub(r'\bI(\d+(?:,\d+)*(?:\.\d+)?)\s*(crore|lakh|billion|million|thousand)', r'Rs.\1 \2', content)
+        content = re.sub(r'INR\s*(\d+)', r'Rs.\1', content)
+        
+        content = re.sub(r'₹(\d+(?:,\d+)*)\s*crore', r'Rs.\1 crore', content)
+        content = re.sub(r'₹(\d+(?:,\d+)*)\s*lakh', r'Rs.\1 lakh', content)
+        content = re.sub(r'\bI(\d+(?:,\d+)*)\s*crore', r'Rs.\1 crore', content)
+        content = re.sub(r'\bI(\d+(?:,\d+)*)\s*lakh', r'Rs.\1 lakh', content)
+        
+        content = content.replace('I crore', 'Rs. crore')
+        content = content.replace('I lakh', 'Rs. lakh')
+        content = content.replace('₹', 'Rs.')
+        
         content = re.sub(r'\*\*(.*?)\*\*', r'\1', content)
+        
+        content = content.replace('---', '')
+        
         return content
 
     def create_pdf(self, content, date_str):
-        """Create formatted PDF with clean formatting - only titles bold and big"""
+        """Create formatted PDF with proper Rs. currency symbols"""
         try:
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -430,10 +502,23 @@ class NewsProcessor:
                 fontName='Helvetica-Bold', alignment=TA_LEFT
             )
 
+            glossary_title_style = ParagraphStyle(
+                'GlossaryTitle', parent=styles['Heading3'], fontSize=12,
+                textColor=HexColor('#4a5568'), spaceBefore=6, spaceAfter=3,
+                fontName='Helvetica-Bold', alignment=TA_LEFT
+            )
+
             normal_style = ParagraphStyle(
                 'Normal', parent=styles['Normal'], fontSize=11,
                 spaceBefore=3, spaceAfter=8, leading=13,
                 fontName='Helvetica', alignment=TA_LEFT
+            )
+
+            glossary_style = ParagraphStyle(
+                'Glossary', parent=styles['Normal'], fontSize=10,
+                spaceBefore=2, spaceAfter=3, leading=12,
+                fontName='Helvetica', alignment=TA_LEFT,
+                leftIndent=20
             )
 
             story = []
@@ -443,25 +528,38 @@ class NewsProcessor:
                 line = line.strip()
                 if not line:
                     story.append(Spacer(1, 6))
-                elif line.startswith('IBPS RRB Daily News Summary'):
+                elif line.startswith('IBPS RRB News -'):
                     story.append(Paragraph(line, main_title_style))
-                elif line in ['Banking Finance', 'Economic', 'Government Schemes', 'International', 'Sports Awards', 'General', 'Practice MCQs Based on Today\'s News']:
+                elif line in ['Banking Finance', 'Economic', 'Government Schemes', 'International', 'Sports Awards', 'General', 'Practice MCQs']:
                     story.append(Paragraph(line, category_title_style))
                 elif line.startswith('HEADLINE:'):
                     clean_line = line.replace('HEADLINE:', '').strip()
                     story.append(Paragraph(clean_line, headline_style))
                 elif line.startswith('SUMMARY:'):
                     clean_line = line.replace('SUMMARY:', '').strip()
+                    clean_line = re.sub(r'₹(\d+(?:,\d+)*(?:\.\d+)?)', r'Rs.\1', clean_line)
+                    clean_line = re.sub(r'\bI(\d+(?:,\d+)*(?:\.\d+)?)', r'Rs.\1', clean_line)
                     story.append(Paragraph(clean_line, normal_style))
+                elif line.startswith('GLOSSARY:'):
+                    clean_line = line.replace('GLOSSARY:', '').strip()
+                    story.append(Paragraph("Key Terms Explained:", glossary_title_style))
+                elif line.startswith('•') and ':' in line:
+                    story.append(Paragraph(line, glossary_style))
                 elif line.startswith('Q') and ('A)' in line or 'B)' in line or 'C)' in line or 'D)' in line):
-                    story.append(Paragraph(line, normal_style))
+                    clean_line = re.sub(r'₹(\d+(?:,\d+)*(?:\.\d+)?)', r'Rs.\1', line)
+                    clean_line = re.sub(r'\bI(\d+(?:,\d+)*(?:\.\d+)?)', r'Rs.\1', clean_line)
+                    story.append(Paragraph(clean_line, normal_style))
                 elif line.startswith('Answer:'):
-                    story.append(Paragraph(line, normal_style))
+                    clean_line = re.sub(r'₹(\d+(?:,\d+)*(?:\.\d+)?)', r'Rs.\1', line)
+                    clean_line = re.sub(r'\bI(\d+(?:,\d+)*(?:\.\d+)?)', r'Rs.\1', clean_line)
+                    story.append(Paragraph(clean_line, normal_style))
                     story.append(Spacer(1, 8))
-                elif line.startswith('Total High-Quality Articles'):
+                elif line.startswith('Articles Processed:'):
                     story.append(Paragraph(line, normal_style))
                 else:
-                    story.append(Paragraph(line, normal_style))
+                    clean_line = re.sub(r'₹(\d+(?:,\d+)*(?:\.\d+)?)', r'Rs.\1', line)
+                    clean_line = re.sub(r'\bI(\d+(?:,\d+)*(?:\.\d+)?)', r'Rs.\1', clean_line)
+                    story.append(Paragraph(clean_line, normal_style))
 
             doc.build(story)
             return buffer.getvalue()
@@ -471,32 +569,27 @@ class NewsProcessor:
             return None
 
     def send_email(self, content, pdf_data, date_str):
-        """Send email with news summary"""
         try:
             msg = MIMEMultipart()
             msg['From'] = self.email_user
             msg['To'] = self.recipient
-            msg['Subject'] = f"IBPS RRB Daily News Summary - {date_str}"
+            msg['Subject'] = f"IBPS RRB News - {date_str}"
 
             email_body = self.email_template.format(date_str=date_str) if self.email_template else f"""Dear IBPS RRB Aspirant,
 
-Your clean and formatted daily news summary for {date_str} is ready.
+Your daily banking news summary for {date_str} is ready.
 
-This final enhanced report features:
-
-• Clean formatting with proper titles and content
-• Fixed currency symbols (₹)
-• No formatting issues or broken symbols
+Enhanced features:
+• Auto-generated glossaries for every article
+• Banking terms explained in simple language
+• Perfect for beginners - no confusion!
+• Clean formatting with proper Rs. currency symbols
 • High-quality relevant articles only
-• Banking and Financial sector developments
-• Economic indicators and policy changes  
-• Government schemes and initiatives
-• Clean MCQs without formatting issues
+• Practice MCQs with beginner-friendly explanations
 
-All content is processed from live news sources and optimized for IBPS RRB exam preparation.
+Perfect for your IBPS RRB exam preparation!
 
-Best wishes for your preparation!
-
+Best wishes,
 IBPS RRB Study Assistant"""
 
             msg.attach(MIMEText(email_body, 'plain'))
@@ -510,7 +603,7 @@ IBPS RRB Study Assistant"""
                 encoders.encode_base64(part)
                 part.add_header(
                     'Content-Disposition',
-                    f'attachment; filename=IBPS_RRB_News_Clean_{date_str.replace(" ", "_")}.pdf'
+                    f'attachment; filename=IBPS_RRB_News_{date_str.replace(" ", "_")}.pdf'
                 )
                 msg.attach(part)
 
@@ -526,12 +619,11 @@ IBPS RRB Study Assistant"""
             return False
 
     def generate_daily_report(self, force=False):
-        """Main function to generate daily report with clean formatting"""
         ist_tz = pytz.timezone('Asia/Kolkata')
         date_str = datetime.now(ist_tz).strftime('%d %B %Y')
 
         try:
-            print(f"Starting clean format news processing for {date_str}")
+            print(f"Starting news processing for {date_str}")
 
             if not force:
                 conn = sqlite3.connect('news_reports.db', check_same_thread=False)
@@ -543,7 +635,7 @@ IBPS RRB Study Assistant"""
                     return {"status": "already_exists", "date": date_str}
                 conn.close()
             else:
-                print(f"Force generating clean format report for {date_str}")
+                print(f"Force generating report for {date_str}")
 
             articles = self.fetch_real_news()
             if not articles:
@@ -574,7 +666,7 @@ IBPS RRB Study Assistant"""
             conn.close()
 
             status_text = "Force generated" if force else "Generated"
-            print(f"Clean format report {status_text} successfully - Articles: {len(articles)}, Email: {'✓' if email_sent else '✗'}")
+            print(f"report {status_text} successfully - Articles: {len(articles)}, Email: {'✓' if email_sent else '✗'}")
 
             return {
                 "status": "success",
@@ -590,7 +682,7 @@ IBPS RRB Study Assistant"""
 
 try:
     processor = NewsProcessor()
-    print("Clean Format News processor initialized successfully")
+    print("News processor initialized successfully")
 except Exception as e:
     print(f"Initialization error: {e}")
     processor = None
@@ -605,7 +697,7 @@ def dashboard():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>IBPS RRB News Generator - Clean Format</title>
+        <title>News Generator</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
             body {{ font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }}
@@ -626,60 +718,50 @@ def dashboard():
     </head>
     <body>
         <div class="container">
-            <h1>IBPS RRB News Generator (Final Clean v4.0)</h1>
+            <h1>News Generator</h1>
             <div class="info">
                 <strong>Current Time:</strong> {ist_time.strftime('%d %B %Y, %I:%M %p IST')}<br>
-                <strong>AI Model:</strong> Gemini-1.5-Flash (Clean Format)<br>
+                <strong>AI Model:</strong> Gemini-1.5-Flash<br>
                 <strong>Email Status:</strong> {'Configured' if processor.email_user else 'Not Configured'}
             </div>
             
-            <div class="improvements">
-                <strong>FINAL FIXES APPLIED:</strong><br>
-                ✓ Only titles are bold and big (headlines and categories)<br>
-                ✓ All content text is normal formatting<br>
-                ✓ Removed ALL ** symbols from MCQs<br>
-                ✓ Fixed currency symbols (proper ₹ display)<br>
-                ✓ Clean PDF formatting without HTML issues<br>
-                ✓ Perfect readability and professional format
-            </div>
-            
+           
             <div class="config-info">
                 <strong>System Status:</strong><br>
                 • News Queries: {len(processor.news_queries)} loaded<br>
                 • RSS Feeds: {len(processor.rss_feeds)} loaded<br>
                 • News Sites: {len(processor.news_sites)} loaded<br>
                 • Keywords: {len(processor.relevant_keywords)} loaded<br>
-                • Format: Clean Professional Template
+                • Scheduled: 8:00 PM IST daily
             </div>
             
             <div class="button-group">
-                <button onclick="generateReport()">Generate Clean Report</button>
+                <button onclick="generateReport()">Generate Format Report</button>
                 <button class="force-btn" onclick="forceGenerateReport()">Force Generate</button>
             </div>
             
             <div id="status"></div>
             
             <div style="margin-top: 30px; text-align: center; color: #666;">
-                <p>Final Clean Format IBPS RRB Banking Exam News System</p>
-                <p>Perfect formatting • Professional appearance • Ready for exam prep</p>
+
             </div>
         </div>
         
         <script>
         function generateReport() {{
-            document.getElementById('status').innerHTML = '<div class="status">Generating final clean report... This may take 2-3 minutes</div>';
+            document.getElementById('status').innerHTML = '<div class="status">Generating report... This may take some time</div>';
             fetch('/generate')
                 .then(response => response.json())
                 .then(data => {{
                     if (data.status === 'success') {{
                         document.getElementById('status').innerHTML = 
-                            `<div class="status success">Perfect clean report generated!<br>
+                            `<div class="status success">report generated perfectly!<br>
                             Articles processed: ${{data.articles_processed}}<br>
                             Email sent: ${{data.email_sent ? 'Yes' : 'No'}}<br>
-                            <small>Clean formatting with proper titles and content</small></div>`;
+                            <small>Clean Rs. currency format with no display issues</small></div>`;
                     }} else if (data.status === 'already_exists') {{
                         document.getElementById('status').innerHTML = 
-                            '<div class="status success">Report already generated for today<br><small>Use "Force Generate" for new clean version</small></div>';
+                            '<div class="status success">Report already generated for today<br><small>Use "Force Generate" for new version</small></div>';
                     }} else {{
                         document.getElementById('status').innerHTML = 
                             `<div class="status error">Error: ${{data.message}}</div>`;
@@ -692,17 +774,16 @@ def dashboard():
         }}
         
         function forceGenerateReport() {{
-            if (confirm('Generate new clean formatted report (will overwrite existing)?')) {{
-                document.getElementById('status').innerHTML = '<div class="status">Force generating clean report... This may take 2-3 minutes</div>';
+            if (confirm('Generate new report?')) {{
+                document.getElementById('status').innerHTML = '<div class="status">Force generating report... This may take sometime</div>';
                 fetch('/force-generate')
                     .then(response => response.json())
                     .then(data => {{
                         if (data.status === 'success') {{
                             document.getElementById('status').innerHTML = 
-                                `<div class="status success">Perfect clean report generated!<br>
+                                `<div class="status success">Perfect! report generated!<br>
                                 Articles processed: ${{data.articles_processed}}<br>
                                 Email sent: ${{data.email_sent ? 'Yes' : 'No'}}<br>
-                                <small>Final clean format with perfect formatting</small></div>`;
                         }} else {{
                             document.getElementById('status').innerHTML = 
                                 `<div class="status error">Error: ${{data.message}}</div>`;
@@ -764,7 +845,7 @@ scheduler.add_job(
 scheduler.start()
 
 if __name__ == '__main__':
-    print("Final Clean Format IBPS RRB News Generator starting...")
+    print("News Generator starting...")
     print(f"Loaded {len(processor.news_queries) if processor else 0} news queries")
     print(f"Loaded {len(processor.rss_feeds) if processor else 0} RSS feeds") 
     print(f"Loaded {len(processor.news_sites) if processor else 0} news sites")

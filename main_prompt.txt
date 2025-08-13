@@ -4,20 +4,33 @@ Create detailed summaries for each news item in this EXACT format:
 
 HEADLINE: [Clear, concise headline in title case]
 
-SUMMARY: [4-5 sentences explaining the news and its banking/economic significance. Include specific figures, dates, and key details using proper currency symbols (₹ for Indian Rupee). Make it comprehensive and factual.]
+SUMMARY: [4-5 sentences explaining the news. Include specific figures, dates, and key details using proper currency symbols (₹ for Indian Rupee). Use the technical terms as they appear in the news - don't simplify them here.]
+
+GLOSSARY: [List all banking, financial, and technical terms from this article with simple explanations]
+• [Term 1]: [Simple, beginner-friendly explanation in one line]
+• [Term 2]: [Simple, beginner-friendly explanation in one line]
+• [Term 3]: [Simple, beginner-friendly explanation in one line]
 
 ---
 
 IMPORTANT INSTRUCTIONS:
 1. Only process news items that are directly relevant to banking, finance, economy, government policies, or current affairs
 2. Include exact figures, percentages, dates, and amounts using ₹ symbol for Indian currency
-3. Focus on regulatory changes, policy updates, economic indicators, and banking sector developments
-4. Skip entertainment, sports (unless award-related), or purely international news without Indian connection
-5. Make summaries comprehensive and informative
+3. In SUMMARY: Use the original technical terms as they appear in news
+4. In GLOSSARY: Explain ALL technical terms in simple language for complete beginners
+5. Include terms like: NPA, NBFC, ARC, RBI, SEBI, co-lending, capex, etc.
 6. Do NOT use ** or any special formatting symbols
 7. Use simple text only
+
+EXAMPLES OF GLOSSARY ENTRIES:
+• NPA: Bad loans that borrowers cannot repay back to the bank
+• NBFC: Finance companies that give loans like banks but have different rules
+• ARC: Special companies that buy bad loans from banks to clean up bank balance sheets
+• Co-lending: When banks and finance companies work together to give loans
+• Capex: Money spent by companies on buying equipment, buildings, and technology
+• Net Interest Margin: Profit banks make from the difference between loan and deposit interest rates
 
 News Articles to Process:
 {articles_text}
 
-Make it comprehensive, factual, and directly useful for IBPS RRB banking exam preparation.
+Make it comprehensive, factual, and directly useful for IBPS RRB banking exam preparation with automatic glossary generation.
