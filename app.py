@@ -31,27 +31,29 @@ class ConfigLoader:
     
     @staticmethod
     def load_lines(filename):
+        filepath = os.path.join('config', filename)
         try:
-            with open(filename, 'r', encoding='utf-8') as file:
+            with open(filepath, 'r', encoding='utf-8') as file:
                 lines = [line.strip() for line in file.readlines()]
                 return [line for line in lines if line and not line.startswith('#')]
         except FileNotFoundError:
-            print(f"Warning: {filename} not found, using default values")
+            print(f"Warning: {filepath} not found, using default values")
             return []
         except Exception as e:
-            print(f"Error loading {filename}: {e}")
+            print(f"Error loading {filepath}: {e}")
             return []
     
     @staticmethod
     def load_text(filename):
+        filepath = os.path.join('config', filename)
         try:
-            with open(filename, 'r', encoding='utf-8') as file:
+            with open(filepath, 'r', encoding='utf-8') as file:
                 return file.read().strip()
         except FileNotFoundError:
-            print(f"Warning: {filename} not found, using default values")
+            print(f"Warning: {filepath} not found, using default values")
             return ""
         except Exception as e:
-            print(f"Error loading {filename}: {e}")
+            print(f"Error loading {filepath}: {e}")
             return ""
 
 class NewsProcessor:
@@ -472,13 +474,11 @@ Create questions that test knowledge of current banking and economic development
         content = content.replace('₹', 'Rs.')
         
         content = re.sub(r'\*\*(.*?)\*\*', r'\1', content)
-        
         content = content.replace('---', '')
         
         return content
 
     def create_pdf(self, content, date_str):
-        """Create formatted PDF with proper Rs. currency symbols"""
         try:
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -713,7 +713,6 @@ def dashboard():
             .force-btn:hover {{ background: #c82333; }}
             .config-info {{ background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #ffeaa7; }}
             .button-group {{ text-align: center; margin: 30px 0; }}
-            .improvements {{ background: #d4edda; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #c3e6cb; }}
         </style>
     </head>
     <body>
@@ -725,7 +724,6 @@ def dashboard():
                 <strong>Email Status:</strong> {'Configured' if processor.email_user else 'Not Configured'}
             </div>
             
-           
             <div class="config-info">
                 <strong>System Status:</strong><br>
                 • News Queries: {len(processor.news_queries)} loaded<br>
@@ -736,15 +734,11 @@ def dashboard():
             </div>
             
             <div class="button-group">
-                <button onclick="generateReport()">Generate Format Report</button>
+                <button onclick="generateReport()">Generate Report</button>
                 <button class="force-btn" onclick="forceGenerateReport()">Force Generate</button>
             </div>
             
             <div id="status"></div>
-            
-            <div style="margin-top: 30px; text-align: center; color: #666;">
-
-            </div>
         </div>
         
         <script>
@@ -755,10 +749,9 @@ def dashboard():
                 .then(data => {{
                     if (data.status === 'success') {{
                         document.getElementById('status').innerHTML = 
-                            `<div class="status success">report generated perfectly!<br>
+                            `<div class="status success">Report generated successfully!<br>
                             Articles processed: ${{data.articles_processed}}<br>
-                            Email sent: ${{data.email_sent ? 'Yes' : 'No'}}<br>
-                            <small>Clean Rs. currency format with no display issues</small></div>`;
+                            Email sent: ${{data.email_sent ? 'Yes' : 'No'}}</div>`;
                     }} else if (data.status === 'already_exists') {{
                         document.getElementById('status').innerHTML = 
                             '<div class="status success">Report already generated for today<br><small>Use "Force Generate" for new version</small></div>';
@@ -781,9 +774,9 @@ def dashboard():
                     .then(data => {{
                         if (data.status === 'success') {{
                             document.getElementById('status').innerHTML = 
-                                `<div class="status success">Perfect! report generated!<br>
+                                `<div class="status success">Report generated successfully!<br>
                                 Articles processed: ${{data.articles_processed}}<br>
-                                Email sent: ${{data.email_sent ? 'Yes' : 'No'}}<br>
+                                Email sent: ${{data.email_sent ? 'Yes' : 'No'}}</div>`;
                         }} else {{
                             document.getElementById('status').innerHTML = 
                                 `<div class="status error">Error: ${{data.message}}</div>`;
